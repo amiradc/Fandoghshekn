@@ -8,7 +8,6 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import libv2ray.Libv2ray;
 
 public class MainActivity extends Activity {
 
@@ -19,23 +18,16 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // قدم اول: تست امنیت دستگاه. اگر روت بود، اجازه ورود نمی‌دهیم!
+        // تست روت بودن دستگاه
         if (isDeviceRooted()) {
-            setContentView(new TextView(this)); // صفحه خالی
+            setContentView(new TextView(this)); 
             Toast.makeText(this, "امکان اجرای فندق‌شکن روی دستگاه‌های روت‌شده وجود ندارد!", Toast.LENGTH_LONG).show();
-            finish(); // بستن آنی برنامه
+            finish(); 
             return;
         }
 
         setContentView(R.layout.activity_main);
         btnConnect = findViewById(R.id.btnConnect);
-
-        // حذف فیلد ورودی قبلی چون حالا همه‌چیز خودکار از Gist می‌آید
-        try {
-            Libv2ray.initV2ray();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
 
         btnConnect.setOnClickListener(v -> {
             if (!isConnected) {
@@ -46,9 +38,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    // مکانیزم سه مرحله‌ای بررسی روت بودن گوشی
     private boolean isDeviceRooted() {
-        // تست اول: چک کردن مسیرهای معروف فایل su
         String[] paths = {
             "/system/app/Superuser.apk", "/sbin/su", "/system/bin/su",
             "/system/xbin/su", "/data/local/xbin/su", "/data/local/bin/su",
@@ -58,11 +48,9 @@ public class MainActivity extends Activity {
             if (new File(path).exists()) return true;
         }
 
-        // تست دوم: چک کردن برچسب بیلد سیستم‌عامل (Test-Keys معمولاً یعنی رام سفارشی یا روت‌شده)
         String buildTags = android.os.Build.TAGS;
         if (buildTags != null && buildTags.contains("test-keys")) return true;
 
-        // تست سوم: تلاش برای اجرای مخفیانه دستور su در خط فرمان اندروید
         Process process = null;
         try {
             process = Runtime.getRuntime().exec(new String[]{ "/system/xbin/which", "su" });
@@ -78,20 +66,17 @@ public class MainActivity extends Activity {
 
     private void startFandoghShekan() {
         btnConnect.setText("در حال دریافت کانفیگ‌های امن...");
-        btnConnect.setBackgroundColor(0xFF2196F3); // آبی
-
-        // اینجا در پارت بعدی کد اتصال به Gist، دانلود متن رمزنگاری شده،
-        // رمزگشاییِ محلی و پینگ‌گیری را اضافه می‌کنیم.
+        btnConnect.setBackgroundColor(0xFF2196F3); 
         
-        // فعلاً برای تست موتور را بیدار می‌کنیم:
+        // شبیه‌سازی اتصال برای تست ظاهر برنامه
         btnConnect.setText("متصل به سریع‌ترین سرور 🥜");
-        btnConnect.setBackgroundColor(0xFF4CAF50); // سبز
+        btnConnect.setBackgroundColor(0xFF4CAF50); 
         isConnected = true;
     }
 
     private void stopFandoghShekan() {
-        btnConnect.setText("اتصال");
-        btnConnect.setBackgroundColor(0xFFFF9800); // نارنجی
+        btnConnect.setText("اتصال هوشمند");
+        btnConnect.setBackgroundColor(0xFFFF9800); 
         isConnected = false;
     }
 }
