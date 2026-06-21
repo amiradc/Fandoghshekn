@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
 }
+
 android {
     namespace 'com.fandogh.shekan'
     compileSdk 34
@@ -12,6 +13,20 @@ android {
         versionName "1.0"
     }
 }
+
+// تسک اختصاصی برای دانلود هسته Xray توسط سرور گیت‌هاب
+tasks.register("downloadXrayCore", Exec) {
+    commandLine 'sh', '-c', 'mkdir -p libs && curl -L -s -o libs/libv2ray.aar https://github.com/2dust/AndroidLibXrayLite/releases/download/v26.6.14/libv2ray.aar'
+}
+
+// به سیستم می‌گوییم حتماً قبل از شروع بیلد، فایل را دانلود کند
+tasks.whenTaskAdded { task ->
+    if (task.name == 'preBuild') {
+        task.dependsOn("downloadXrayCore")
+    }
+}
+
 dependencies {
-    implementation 'io.github.2dust:libv2ray:2026.06.14'
+    // خواندن فایل از پوشه‌ای که در مرحله قبل دانلود شد
+    implementation files('libs/libv2ray.aar')
 }
