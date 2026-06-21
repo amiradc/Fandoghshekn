@@ -2,7 +2,7 @@ package com.fandogh.shekan;
 
 import android.app.Activity;
 import android.os.Bundle;
-import import android.widget.Button;
+import android.widget.Button;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
@@ -51,7 +51,6 @@ public class MainActivity extends Activity {
 
     private void parseAndPing(String config) {
         try {
-            // یک پارسر ساده و سریع برای استخراج Host و Port از لینک vless
             String cleanConfig = config.replace("vless://", "");
             String[] partsAfterAt = cleanConfig.split("@");
             String[] hostAndPortParts = partsAfterAt[1].split(":");
@@ -59,10 +58,8 @@ public class MainActivity extends Activity {
             String host = hostAndPortParts[0];
             String portWithQuery = hostAndPortParts[1];
             
-            // جدا کردن پورت از باقی پارامترها (مثل ?type=ws)
             int port = Integer.parseInt(portWithQuery.split("\\?")[0].split("#")[0]);
 
-            // شروع عملیات پینگ
             pingManager.checkTcpPing(host, port, new PingManager.PingCallback() {
                 @Override
                 public void onResult(long latencyMs) {
@@ -75,7 +72,7 @@ public class MainActivity extends Activity {
 
                 @Override
                 public void onError(String error) {
-                    resetButton("سرور قطع است (Timeout)", 0xFFE91E63); // صورتی/قرمز مایل به ارور پینگ
+                    resetButton("سرور قطع است (Timeout)", 0xFFE91E63); // صورتی/قرمز
                 }
             });
 
