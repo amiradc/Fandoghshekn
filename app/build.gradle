@@ -1,0 +1,17 @@
+plugins {
+    id 'com.android.application'
+}
+android {
+    namespace 'com.fandogh.shekan'
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.fandogh.shekan"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+}
+dependencies {
+    implementation 'io.github.2dust:libv2ray:2026.06.14'
+}
