@@ -13,7 +13,7 @@ import java.util.concurrent.Executors;
 public class ConfigManager {
 
     // لینکی که مستقیماً به متن خام (Raw) در Gist اشاره می‌کند
-    private static final String GIST_RAW_URL = "آدرس_لینک_RAW_گیت‌هاب_را_اینجا_می‌گذاریم";
+    private static final String GIST_RAW_URL = "https://gist.github.com/arcaneechoes08-hub/97ed58c7ee1f162a7a0ae8608f08b25c.js";
     
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
