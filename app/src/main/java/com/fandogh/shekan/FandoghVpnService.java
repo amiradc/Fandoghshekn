@@ -1,6 +1,7 @@
 package com.fandogh.shekan;
 
 import android.content.Intent;
+import android.net.ProxyInfo;
 import android.net.VpnService;
 import android.os.Handler;
 import android.os.Looper;
@@ -64,14 +65,18 @@ public class FandoghVpnService extends VpnService implements Runnable {
             } else {
                 throw new Exception("لینک VLESS نامعتبر است!");
             }
-            showStatus("🌐 گام ۳: در حال فعال‌سازی تونل...");
+            showStatus("🌐 گام ۳: در حال فعال‌سازی تونل سیستمی...");
             Builder builder = new Builder();
-            mInterface = builder.setSession("FandoghShekan")
+            builder.setSession("FandoghShekan")
                     .addAddress("10.0.0.2", 24)
-                    .addDnsServer("8.8.8.8")
-                    .addRoute("0.0.0.0", 0)
-                    .addDisallowedApplication(getPackageName())
-                    .establish();
+                    .addDisallowedApplication(getPackageName());
+
+            // جادوی اصلی: هدایت ترافیک سیستم به پورت HTTP هسته Xray
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                builder.setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", 10809));
+            }
+
+            mInterface = builder.establish();
 
             if (mInterface == null) {
                 throw new Exception("سیستم‌عامل اجازه ایجاد تونل را نداد!");
@@ -79,13 +84,14 @@ public class FandoghVpnService extends VpnService implements Runnable {
             showStatus("🚀 فندق‌شکن متصل شد.");
             String[] cmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
             mXrayProcess = Runtime.getRuntime().exec(cmd);
+            
             while (mThread != null && !mThread.isInterrupted()) {
                 Thread.sleep(1000);
             }
+        } catch (InterruptedException e) {
+            showStatus("🛑 فندق‌شکن قطع شد.");
         } catch (Exception e) {
-            // ثبت لاگ کامل در سیستم برای بررسی دقیق‌تر
             Log.e(TAG, "خطای جدی در فرآیند اتصال هسته", e);
-            // استفاده از e.toString() برای دیدن نام واقعی خطا
             showStatus("❌ خطا: " + e.toString());
         } finally {
             stopVpn();
@@ -116,9 +122,14 @@ public class FandoghVpnService extends VpnService implements Runnable {
         }
         String path = queryPairs.containsKey("path") ? java.net.URLDecoder.decode(queryPairs.get("path"), "UTF-8") : "/";
         String sni = queryPairs.containsKey("host") ? queryPairs.get("host") : host;
+        
+        // تنظیم دو اینباند همزمان: یکی Socks روی پورت 10808 و دیگری HTTP روی پورت 10809
         String json = "{\n" +
                 "  \"log\": {\"loglevel\": \"warning\"},\n" +
-                "  \"inbounds\": [{\"port\": 10808, \"protocol\": \"socks\", \"settings\": {\"auth\": \"noauth\", \"udp\": true}}],\n" +
+                "  \"inbounds\": [\n" +
+                "    {\"port\": 10808, \"protocol\": \"socks\", \"settings\": {\"auth\": \"noauth\", \"udp\": true}},\n" +
+                "    {\"port\": 10809, \"protocol\": \"http\", \"settings\": {}}\n" +
+                "  ],\n" +
                 "  \"outbounds\": [{\n" +
                 "    \"protocol\": \"vless\",\n" +
                 "    \"settings\": {\"vnext\": [{\"address\": \"" + host + "\", \"port\": " + port + ", \"users\": [{\"id\": \"" + uuid + "\", \"encryption\": \"none\"}]}]},\n" +
