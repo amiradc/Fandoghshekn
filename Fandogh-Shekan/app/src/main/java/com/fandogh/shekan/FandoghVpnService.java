@@ -54,7 +54,6 @@ public class FandoghVpnService extends VpnService implements Runnable {
     public void run() {
         try {
             showStatus("🔍 گام ۱: بارگذاری هسته ایمن Xray از سیستم...");
-            // آدرس‌دهی مستقیم به پوشه نیتیو و امن اندروید برای دور زدن خطای Permission Denied
             String nativeDir = getApplicationInfo().nativeLibraryDir;
             File xrayBin = new File(nativeDir, "libxray.so");
             
@@ -100,7 +99,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
         } catch (Exception e) {
             Log.e(TAG, "خطا: " + e.getMessage());
             showStatus("❌ خطا در اتصال: " + e.getMessage());
-        } finaly {
+        } finally {
             stopVpn();
         }
     }
