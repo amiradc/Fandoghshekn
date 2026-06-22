@@ -3,6 +3,7 @@ package com.fandogh.shekan;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
+import android.util.Log;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -14,10 +15,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 public class ConfigManager {
 
-    // ۱. لینک Raw گیت‌هاب خودت را اینجا بگذار
     private static final String GIST_RAW_URL = "https://gist.githubusercontent.com/arcaneechoes08-hub/360f898ab276cb083f0901cbabd4aa6a/raw/configs.txt";
-    
-    // ۲. کلید اختصاصی ۱۶ کاراکتری (اصلاح شده)
     private static final String SECRET_KEY = "FandoghSecretKey"; 
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -34,8 +32,8 @@ public class ConfigManager {
                 URL url = new URL(GIST_RAW_URL);
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("GET");
-                connection.setConnectTimeout(5000);
-                connection.setReadTimeout(5000);
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(8000);
 
                 int responseCode = connection.getResponseCode();
                 if (responseCode == HttpURLConnection.HTTP_OK) {
@@ -47,21 +45,33 @@ public class ConfigManager {
                     }
                     reader.close();
 
-                    // رمزگشایی پیشرفته AES
-                    String decryptedConfig = decryptAES(response.toString().trim(), SECRET_KEY);
+                    String rawData = response.toString().trim();
+                    if (rawData.isEmpty()) {
+                        mainHandler.post(() -> callback.onError("خطا: دیتای دریافت شده از سرور خالی است."));
+                        return;
+                    }
 
+                    // رمزگشایی ایمن
+                    String decryptedConfig = decryptAES(rawData, SECRET_KEY);
                     mainHandler.post(() -> callback.onSuccess(decryptedConfig));
                 } else {
-                    mainHandler.post(() -> callback.onError("خطا در ارتباط: " + responseCode));
+                    mainHandler.post(() -> callback.onError("خطا در ارتباط با گیت‌هاب. کد: " + responseCode));
                 }
+            } catch (javax.crypto.BadPaddingException | javax.crypto.IllegalBlockSizeException ae) {
+                mainHandler.post(() -> callback.onError("خطا در رمزگشایی: کلید نامعتبر یا دیتای جیست اشتباه است."));
+            } catch (IllegalArgumentException be) {
+                mainHandler.post(() -> callback.onError("خطا: ساختار دیتای جیست Base64 معتبر نیست."));
             } catch (Exception e) {
-                mainHandler.post(() -> callback.onError("خطا در رمزگشایی یا شبکه: " + e.getMessage()));
+                mainHandler.post(() -> callback.onError("خطا در شبکه یا اینترنت گوشی: " + e.getLocalizedMessage()));
             }
         });
     }
 
     private String decryptAES(String encryptedText, String key) throws Exception {
-        byte[] encryptedBytes = Base64.decode(encryptedText, Base64.DEFAULT);
+        // حذف تمام اینترها، اسپیس‌ها و کاراکترهای مخفی ورودی برای سازگاری کامل با جاوا ۸
+        String cleanText = encryptedText.replaceAll("[\\n\\r\\s]+", "");
+        
+        byte[] encryptedBytes = Base64.decode(cleanText, Base64.DEFAULT);
         
         SecretKeySpec secretKey = new SecretKeySpec(key.getBytes("UTF-8"), "AES");
         Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
