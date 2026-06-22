@@ -53,20 +53,43 @@ public class MainActivity extends Activity {
 
     private void parseAndPing(String config) {
         try {
-            String cleanConfig = config.replace("vless://", "");
-            String[] partsAfterAt = cleanConfig.split("@");
-            String[] hostAndPortParts = partsAfterAt[1].split(":");
+            // ۱. پاکسازی کامل تمام فاصله‌ها و خطوط اضافه احتمالی از ابتدا و انتهای کانفیگ
+            if (config == null) throw new Exception("کانفیگ خالی است");
+            config = config.trim();
             
-            String host = hostAndPortParts[0];
-            String portWithQuery = hostAndPortParts[1];
+            if (!config.startsWith("vless://")) {
+                throw new Exception("لینک vless معتبر نیست");
+            }
             
-            int port = Integer.parseInt(portWithQuery.split("\\?")[0].split("#")[0]);
+            // ۲. حذف پروتکل ابتدایی
+            String uriBody = config.substring(8); 
+            
+            // ۳. پیدا کردن علامت @ برای استخراج بخش سرور (از آخر به اول برای امنیت بیشتر)
+            int atIndex = uriBody.lastIndexOf("@");
+            if (atIndex == -1) throw new Exception("علامت @ پیدا نشد");
+            
+            String serverPart = uriBody.substring(atIndex + 1);
+            
+            // ۴. جدا کردن آدرس و پورت از بخش کوئری‌ها (مثل ?type=ws یا #remarks)
+            String[] mainParts = serverPart.split("[?#]");
+            String hostAndPort = mainParts[0];
+            
+            // ۵. تفکیک Host و Port با پیدا کردن آخرین دو نقطه (:)
+            int colonIndex = hostAndPort.lastIndexOf(":");
+            if (colonIndex == -1) throw new Exception("پورت سرور پیدا نشد");
+            
+            String host = hostAndPort.substring(0, colonIndex).trim();
+            String portStr = hostAndPort.substring(colonIndex + 1).trim();
+            
+            int port = Integer.parseInt(portStr);
 
+            // شروع عملیات پینگ روی پورت و هاست استخراج شده
             pingManager.checkTcpPing(host, port, new PingManager.PingCallback() {
                 @Override
                 public void onResult(long latencyMs) {
                     Toast.makeText(MainActivity.this, "پینگ سرور: " + latencyMs + "ms", Toast.LENGTH_SHORT).show();
-                    // درخواست مجوز رسمی VPN از اندروید
+                    
+                    // درخواست مجوز رسمی VPN از سیستم‌عامل
                     Intent intent = VpnService.prepare(MainActivity.this);
                     if (intent != null) {
                         startActivityForResult(intent, 0);
@@ -82,7 +105,8 @@ public class MainActivity extends Activity {
             });
 
         } catch (Exception e) {
-            resetButton("خطا در ساختار کانفیگ", 0xFFF44336);
+            // حالا اگر مشکلی پیش بیاید، دلیل دقیق را روی دکمه مینویسد تا بفهمیم ایراد کجاست
+            resetButton("خطا: " + e.getMessage(), 0xFFF44336);
         }
     }
 
@@ -90,7 +114,6 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode == RESULT_OK) {
-            // کاربر تایید کرد، پس سرویس تونل رو استارت می‌زنیم
             Intent intent = new Intent(this, FandoghVpnService.class);
             startService(intent);
             
