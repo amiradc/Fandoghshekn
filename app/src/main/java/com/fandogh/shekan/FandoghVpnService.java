@@ -9,8 +9,6 @@ import android.util.Log;
 import android.widget.Toast;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -21,7 +19,6 @@ public class FandoghVpnService extends VpnService implements Runnable {
     private Process mXrayProcess;
     private String mVlessLink;
 
-    // تابع کمکی برای نمایش وضعیت به صورت زنده روی صفحه گوشی
     private void showStatus(String message) {
         new Handler(Looper.getMainLooper()).post(() -> 
             Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show()
@@ -56,31 +53,20 @@ public class FandoghVpnService extends VpnService implements Runnable {
     @Override
     public void run() {
         try {
-            showStatus("🔍 گام ۱: بررسی و استخراج هسته Xray...");
-            File binDir = getFilesDir();
-            File xrayBin = new File(binDir, "xray");
+            showStatus("🔍 گام ۱: بارگذاری هسته ایمن Xray از سیستم...");
+            String nativeDir = getApplicationInfo().nativeLibraryDir;
+            File xrayBin = new File(nativeDir, "libxray.so");
             
             if (!xrayBin.exists()) {
-                try {
-                    InputStream is = getAssets().open("xray");
-                    OutputStream os = new FileOutputStream(xrayBin);
-                    byte[] buffer = new byte[1024];
-                    int length;
-                    while ((length = is.read(buffer)) > 0) {
-                        os.write(buffer, 0, length);
-                    }
-                    os.flush(); os.close(); is.close();
-                } catch (Exception assetError) {
-                    throw new Exception("فایل باینری Xray در Assets یافت نشد! بیلد ناقص است.");
-                }
+                throw new Exception("هسته سیستمی یافت نشد!");
             }
-            xrayBin.setExecutable(true, false);
 
             showStatus("⚙️ گام ۲: تبدیل لینک به فایل کانفیگ...");
+            File baseDir = getFilesDir();
             if (mVlessLink != null && mVlessLink.startsWith("vless://")) {
-                generateXrayConfigManual(mVlessLink, binDir);
+                generateXrayConfigManual(mVlessLink, baseDir);
             } else {
-                throw new Exception("لینک VLESS خالی یا نامعتبر است!");
+                throw new Exception("لینک VLESS نامعتبر است!");
             }
 
             showStatus("🌐 گام ۳: در حال فعال‌سازی کلید VPN اندروید...");
@@ -102,7 +88,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
                 xrayBin.getAbsolutePath(), 
                 "run", 
                 "-config", 
-                new File(binDir, "config.json").getAbsolutePath()
+                new File(baseDir, "config.json").getAbsolutePath()
             };
             
             mXrayProcess = Runtime.getRuntime().exec(cmd);
