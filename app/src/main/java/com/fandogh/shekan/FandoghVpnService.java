@@ -22,6 +22,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
     private Process mTun2SocksProcess;
     private String mVlessLink;
 
+    // نمایش مستقیم ارورها روی صفحه گوشی بدون نیاز به کامپیوتر
     private void showStatus(String message) {
         new Handler(Looper.getMainLooper()).post(() ->
             Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show()
@@ -54,16 +55,12 @@ public class FandoghVpnService extends VpnService implements Runnable {
     @Override
     public void run() {
         try {
-            showStatus("🔍 گام ۱: بارگذاری هسته ایمن Xray...");
             String nativeDir = getApplicationInfo().nativeLibraryDir;
             File xrayBin = new File(nativeDir, "libxray.so");
             File tun2socksBin = new File(nativeDir, "libtun2socks.so");
 
-            if (!xrayBin.exists()) {
-                throw new Exception("هسته سیستمی یافت نشد!");
-            }
+            if (!xrayBin.exists()) throw new Exception("هسته Xray یافت نشد!");
 
-            showStatus("⚙️ گام ۲: تبدیل لینک به فایل کانفیگ...");
             File baseDir = getFilesDir();
             if (mVlessLink != null && mVlessLink.startsWith("vless://")) {
                 generateXrayConfigManual(mVlessLink, baseDir);
@@ -71,25 +68,30 @@ public class FandoghVpnService extends VpnService implements Runnable {
                 throw new Exception("لینک VLESS نامعتبر است!");
             }
 
-            showStatus("🌐 گام ۳: ایجاد تونل کامل شبکه...");
             Builder builder = new Builder();
             builder.setSession("FandoghShekan")
                     .addAddress("10.0.0.2", 24)
-                    .addRoute("0.0.0.0", 0) // 🔥 خفت کردن کل اینترنت گوشی
-                    .addDnsServer("8.8.8.8") // ⚡ حل مشکل DNS
+                    .addRoute("0.0.0.0", 0)
+                    .addDnsServer("8.8.8.8")
                     .addDisallowedApplication(getPackageName());
 
             mInterface = builder.establish();
-            if (mInterface == null) {
-                throw new Exception("سیستم‌عامل اجازه ایجاد تونل را نداد!");
-            }
+            if (mInterface == null) throw new Exception("تونل VPN ایجاد نشد!");
             int tunFd = mInterface.getFd();
 
-            showStatus("🚀 پرتاب هسته Xray...");
+            // 🔓 هک سیستمی: شکستن قفل CLOEXEC اندروید برای مجاز کردن Tun2Socks به استفاده از تونل
+            try {
+                android.system.Os.fcntlInt(mInterface.getFileDescriptor(), android.system.OsConstants.F_SETFD, 0);
+            } catch (Exception e) {
+                Log.e(TAG, "خطا در باز کردن قفل تونل", e);
+            }
+
+            // 🚀 روشن کردن Xray
             String[] xrayCmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
             mXrayProcess = Runtime.getRuntime().exec(xrayCmd);
+            pipeLogsToScreen(mXrayProcess, "Xray");
 
-            // 🛠️ جادو: اگر فایل مترجم وجود دارد، آن را روشن کن تا لوله‌کشی کامل شود
+            // 🛠️ روشن کردن Tun2Socks
             if (tun2socksBin.exists()) {
                 String[] t2sCmd = {
                     tun2socksBin.getAbsolutePath(),
@@ -97,9 +99,12 @@ public class FandoghVpnService extends VpnService implements Runnable {
                     "-proxy", "socks5://127.0.0.1:10808"
                 };
                 mTun2SocksProcess = Runtime.getRuntime().exec(t2sCmd);
+                pipeLogsToScreen(mTun2SocksProcess, "Tun2Socks");
             } else {
-                Log.e(TAG, "فایل libtun2socks.so هنوز اضافه نشده است!");
+                showStatus("❌ فایل لایه مترجم شبکه (Tun2Socks) یافت نشد!");
             }
+
+            showStatus("🚀 فندق‌شکن فعال شد. در حال مانیتور جریان شبکه...");
 
             while (mThread != null && !mThread.isInterrupted()) {
                 Thread.sleep(1000);
@@ -107,11 +112,30 @@ public class FandoghVpnService extends VpnService implements Runnable {
         } catch (InterruptedException e) {
             showStatus("🛑 فندق‌شکن قطع شد.");
         } catch (Exception e) {
-            Log.e(TAG, "خطای جدی", e);
-            showStatus("❌ خطا: " + e.getMessage());
+            showStatus("❌ خطای سیستم: " + e.getMessage());
         } finally {
             stopVpn();
         }
+    }
+
+    // 📻 لوله‌کشی جریان ارورها مستقیماً به روی اسکرین گوشی
+    private void pipeLogsToScreen(Process process, String processName) {
+        if (process == null) return;
+        
+        // شنود خروجی‌های استاندارد اِررور
+        new Thread(() -> {
+            try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+                String line;
+                int count = 0;
+                while ((line = r.readLine()) != null && count < 3) {
+                    // فرستادن اِررورهای حیاتی اولیه به صورت پاپ‌آپ روی گوشی
+                    if (line.toLowerCase().contains("fail") || line.toLowerCase().contains("err") || line.toLowerCase().contains("fatal")) {
+                        showStatus("⚠️ [" + processName + "]: " + line);
+                        count++; // برای اینکه صفحه پر از توست نشود، فقط ارورهای اولیه را نشان بده
+                    }
+                }
+            } catch (Exception ignored) {}
+        }).start();
     }
 
     private void generateXrayConfigManual(String link, File dir) throws Exception {
@@ -128,7 +152,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String serverPart = credentialsAndServer.substring(atIdx + 1);
         
         int colonIdx = serverPart.lastIndexOf(":");
-        if (colonIdx == -1) throw new Exception("پورت سرور پیدا نشد");
+        if (colonIdx == -1) throw new Exception("پورت سرور یافت نشد");
         String host = serverPart.substring(0, colonIdx).trim();
         int port = Integer.parseInt(serverPart.substring(colonIdx + 1).trim());
         
@@ -149,6 +173,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String pbk = params.getOrDefault("pbk", "");
         String sid = params.getOrDefault("sid", "");
         String fp = params.getOrDefault("fp", "chrome");
+        String flow = params.getOrDefault("flow", ""); 
 
         StringBuilder streamStr = new StringBuilder();
         streamStr.append("{\n")
@@ -183,6 +208,9 @@ public class FandoghVpnService extends VpnService implements Runnable {
         }
         streamStr.append("\n}");
 
+        String userSettings = "{\"id\": \"" + uuid + "\", \"encryption\": \"none\"" + 
+                (!flow.isEmpty() ? ", \"flow\": \"" + flow + "\"" : "") + "}";
+
         String json = "{\n" +
                 "  \"log\": {\"loglevel\": \"warning\"},\n" +
                 "  \"inbounds\": [\n" +
@@ -190,7 +218,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
                 "  ],\n" +
                 "  \"outbounds\": [{\n" +
                 "    \"protocol\": \"vless\",\n" +
-                "    \"settings\": {\"vnext\": [{\"address\": \"" + host + "\", \"port\": " + port + ", \"users\": [{\"id\": \"" + uuid + "\", \"encryption\": \"none\"}]}]},\n" +
+                "    \"settings\": {\"vnext\": [{\"address\": \"" + host + "\", \"port\": " + port + ", \"users\": [" + userSettings + "]}]},\n" +
                 "    \"streamSettings\": " + streamStr.toString() + "\n" +
                 "  }]\n" +
                 "}";
