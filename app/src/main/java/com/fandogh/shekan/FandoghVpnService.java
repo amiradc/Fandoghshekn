@@ -1,7 +1,6 @@
 package com.fandogh.shekan;
 
 import android.content.Intent;
-import android.net.ProxyInfo;
 import android.net.VpnService;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,6 +19,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
     private Thread mThread;
     private ParcelFileDescriptor mInterface;
     private Process mXrayProcess;
+    private Process mTun2SocksProcess;
     private String mVlessLink;
 
     private void showStatus(String message) {
@@ -57,9 +57,12 @@ public class FandoghVpnService extends VpnService implements Runnable {
             showStatus("🔍 گام ۱: بارگذاری هسته ایمن Xray...");
             String nativeDir = getApplicationInfo().nativeLibraryDir;
             File xrayBin = new File(nativeDir, "libxray.so");
+            File tun2socksBin = new File(nativeDir, "libtun2socks.so");
+
             if (!xrayBin.exists()) {
                 throw new Exception("هسته سیستمی یافت نشد!");
             }
+
             showStatus("⚙️ گام ۲: تبدیل لینک به فایل کانفیگ...");
             File baseDir = getFilesDir();
             if (mVlessLink != null && mVlessLink.startsWith("vless://")) {
@@ -67,46 +70,35 @@ public class FandoghVpnService extends VpnService implements Runnable {
             } else {
                 throw new Exception("لینک VLESS نامعتبر است!");
             }
-            showStatus("🌐 گام ۳: در حال فعال‌سازی تونل سیستمی...");
+
+            showStatus("🌐 گام ۳: ایجاد تونل کامل شبکه...");
             Builder builder = new Builder();
             builder.setSession("FandoghShekan")
                     .addAddress("10.0.0.2", 24)
+                    .addRoute("0.0.0.0", 0) // 🔥 خفت کردن کل اینترنت گوشی
+                    .addDnsServer("8.8.8.8") // ⚡ حل مشکل DNS
                     .addDisallowedApplication(getPackageName());
-
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                builder.setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", 10809));
-            }
 
             mInterface = builder.establish();
             if (mInterface == null) {
                 throw new Exception("سیستم‌عامل اجازه ایجاد تونل را نداد!");
             }
-            showStatus("🚀 فندق‌شکن متصل شد.");
-            
-            String[] cmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
-            mXrayProcess = Runtime.getRuntime().exec(cmd);
-            
-            final StringBuilder xrayErrors = new StringBuilder();
-            Thread errorReader = new Thread(() -> {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(mXrayProcess.getErrorStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        xrayErrors.append(line).append("\n");
-                    }
-                } catch (Exception ignored) {}
-            });
-            errorReader.start();
+            int tunFd = mInterface.getFd();
 
-            Thread.sleep(1500);
-            try {
-                int exitCode = mXrayProcess.exitValue();
-                String coreError = xrayErrors.toString().trim();
-                if (coreError.isEmpty()) {
-                    coreError = "هسته متوقف شد. کد خروج: " + exitCode;
-                }
-                throw new Exception(coreError);
-            } catch (IllegalThreadStateException e) {
-                // هسته با موفقیت در حال اجراست
+            showStatus("🚀 پرتاب هسته Xray...");
+            String[] xrayCmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
+            mXrayProcess = Runtime.getRuntime().exec(xrayCmd);
+
+            // 🛠️ جادو: اگر فایل مترجم وجود دارد، آن را روشن کن تا لوله‌کشی کامل شود
+            if (tun2socksBin.exists()) {
+                String[] t2sCmd = {
+                    tun2socksBin.getAbsolutePath(),
+                    "-device", "fd://" + tunFd,
+                    "-proxy", "socks5://127.0.0.1:10808"
+                };
+                mTun2SocksProcess = Runtime.getRuntime().exec(t2sCmd);
+            } else {
+                Log.e(TAG, "فایل libtun2socks.so هنوز اضافه نشده است!");
             }
 
             while (mThread != null && !mThread.isInterrupted()) {
@@ -115,7 +107,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
         } catch (InterruptedException e) {
             showStatus("🛑 فندق‌شکن قطع شد.");
         } catch (Exception e) {
-            Log.e(TAG, "خطای جدی در فرآیند اتصال هسته", e);
+            Log.e(TAG, "خطای جدی", e);
             showStatus("❌ خطا: " + e.getMessage());
         } finally {
             stopVpn();
@@ -158,7 +150,6 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String sid = params.getOrDefault("sid", "");
         String fp = params.getOrDefault("fp", "chrome");
 
-        // 🛠️ ساخت داینامیک بخش streamSettings بر اساس نوع کانفیگ ورودی شما
         StringBuilder streamStr = new StringBuilder();
         streamStr.append("{\n")
                  .append("  \"network\": \"").append(network).append("\",\n")
@@ -195,8 +186,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String json = "{\n" +
                 "  \"log\": {\"loglevel\": \"warning\"},\n" +
                 "  \"inbounds\": [\n" +
-                "    {\"port\": 10808, \"protocol\": \"socks\", \"settings\": {\"auth\": \"noauth\", \"udp\": true}},\n" +
-                "    {\"port\": 10809, \"protocol\": \"http\", \"settings\": {}}\n" +
+                "    {\"port\": 10808, \"protocol\": \"socks\", \"settings\": {\"auth\": \"noauth\", \"udp\": true}}\n" +
                 "  ],\n" +
                 "  \"outbounds\": [{\n" +
                 "    \"protocol\": \"vless\",\n" +
@@ -212,6 +202,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
 
     private void stopVpn() {
         try {
+            if (mTun2SocksProcess != null) { mTun2SocksProcess.destroy(); mTun2SocksProcess = null; }
             if (mXrayProcess != null) { mXrayProcess.destroy(); mXrayProcess = null; }
             if (mThread != null) { mThread.interrupt(); mThread = null; }
             if (mInterface != null) { mInterface.close(); mInterface = null; }
