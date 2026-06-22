@@ -20,7 +20,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
     private String mVlessLink;
 
     private void showStatus(String message) {
-        new Handler(Looper.getMainLooper()).post(() -> 
+        new Handler(Looper.getMainLooper()).post(() ->
             Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show()
         );
     }
@@ -34,11 +34,9 @@ public class FandoghVpnService extends VpnService implements Runnable {
             }
             mVlessLink = intent.getStringExtra("VLESS_LINK");
         }
-        
         if (mThread != null && mThread.isAlive()) {
             stopVpn();
         }
-        
         mThread = new Thread(this, "FandoghVpnThread");
         mThread.start();
         return START_STICKY;
@@ -53,14 +51,12 @@ public class FandoghVpnService extends VpnService implements Runnable {
     @Override
     public void run() {
         try {
-            showStatus("🔍 گام ۱: بارگذاری هسته ایمن Xray از سیستم...");
+            showStatus("🔍 گام ۱: بارگذاری هسته ایمن Xray...");
             String nativeDir = getApplicationInfo().nativeLibraryDir;
             File xrayBin = new File(nativeDir, "libxray.so");
-            
             if (!xrayBin.exists()) {
                 throw new Exception("هسته سیستمی یافت نشد!");
             }
-
             showStatus("⚙️ گام ۲: تبدیل لینک به فایل کانفیگ...");
             File baseDir = getFilesDir();
             if (mVlessLink != null && mVlessLink.startsWith("vless://")) {
@@ -68,8 +64,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
             } else {
                 throw new Exception("لینک VLESS نامعتبر است!");
             }
-
-            showStatus("🌐 گام ۳: در حال فعال‌سازی کلید VPN اندروید...");
+            showStatus("🌐 گام ۳: در حال فعال‌سازی تونل...");
             Builder builder = new Builder();
             mInterface = builder.setSession("FandoghShekan")
                     .addAddress("10.0.0.2", 24)
@@ -79,26 +74,19 @@ public class FandoghVpnService extends VpnService implements Runnable {
                     .establish();
 
             if (mInterface == null) {
-                throw new Exception("سیستم‌عامل اجازه ایجاد تونل مجازی را نداد!");
+                throw new Exception("سیستم‌عامل اجازه ایجاد تونل را نداد!");
             }
-
-            showStatus("🚀 فندق‌شکن با موفقیت متصل شد! کلید فعال شد.");
-
-            String[] cmd = {
-                xrayBin.getAbsolutePath(), 
-                "run", 
-                "-config", 
-                new File(baseDir, "config.json").getAbsolutePath()
-            };
-            
+            showStatus("🚀 فندق‌شکن متصل شد.");
+            String[] cmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
             mXrayProcess = Runtime.getRuntime().exec(cmd);
-
             while (mThread != null && !mThread.isInterrupted()) {
                 Thread.sleep(1000);
             }
         } catch (Exception e) {
-            Log.e(TAG, "خطا: " + e.getMessage());
-            showStatus("❌ خطا در اتصال: " + e.getMessage());
+            // ثبت لاگ کامل در سیستم برای بررسی دقیق‌تر
+            Log.e(TAG, "خطای جدی در فرآیند اتصال هسته", e);
+            // استفاده از e.toString() برای دیدن نام واقعی خطا
+            showStatus("❌ خطا: " + e.toString());
         } finally {
             stopVpn();
         }
@@ -111,80 +99,42 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String[] querySplit = mainPart.split("\\?", 2);
         String credentialsAndServer = querySplit[0];
         String queryString = querySplit.length > 1 ? querySplit[1] : "";
-        
         int atIdx = credentialsAndServer.lastIndexOf("@");
         if (atIdx == -1) throw new Exception("فرمت کانفیگ اشتباه است (@ ندارد)");
         String uuid = credentialsAndServer.substring(0, atIdx);
         String serverPart = credentialsAndServer.substring(atIdx + 1);
-        
         int colonIdx = serverPart.lastIndexOf(":");
-        if (colonIdx == -1) throw new Exception("پورت سرور در لینک پیدا نشد");
+        if (colonIdx == -1) throw new Exception("پورت سرور پیدا نشد");
         String host = serverPart.substring(0, colonIdx).trim();
         int port = Integer.parseInt(serverPart.substring(colonIdx + 1).trim());
-        
         Map<String, String> queryPairs = new HashMap<>();
         if (!queryString.isEmpty()) {
-            String[] pairs = queryString.split("&");
-            for (String pair : pairs) {
+            for (String pair : queryString.split("&")) {
                 int idx = pair.indexOf("=");
-                if (idx != -1) {
-                    queryPairs.put(pair.substring(0, idx), pair.substring(idx + 1));
-                }
+                if (idx != -1) queryPairs.put(pair.substring(0, idx), pair.substring(idx + 1));
             }
         }
-
         String path = queryPairs.containsKey("path") ? java.net.URLDecoder.decode(queryPairs.get("path"), "UTF-8") : "/";
         String sni = queryPairs.containsKey("host") ? queryPairs.get("host") : host;
-
         String json = "{\n" +
                 "  \"log\": {\"loglevel\": \"warning\"},\n" +
-                "  \"inbounds\": [{\n" +
-                "    \"port\": 10808,\n" +
-                "    \"protocol\": \"socks\",\n" +
-                "    \"settings\": {\"auth\": \"noauth\", \"udp\": true}\n" +
-                "  }],\n" +
+                "  \"inbounds\": [{\"port\": 10808, \"protocol\": \"socks\", \"settings\": {\"auth\": \"noauth\", \"udp\": true}}],\n" +
                 "  \"outbounds\": [{\n" +
                 "    \"protocol\": \"vless\",\n" +
-                "    \"settings\": {\n" +
-                "      \"vnext\": [{\n" +
-                "        \"address\": \"" + host + "\",\n" +
-                "        \"port\": " + port + ",\n" +
-                "        \"users\": [{\"id\": \"" + uuid + "\", \"encryption\": \"none\"}]\n" +
-                "      }]\n" +
-                "    },\n" +
-                "    \"streamSettings\": {\n" +
-                "      \"network\": \"ws\",\n" +
-                "      \"security\": \"none\",\n" +
-                "      \"wsSettings\": {\n" +
-                "        \"path\": \"" + path + "\",\n" +
-                "        \"headers\": {\"Host\": \"" + sni + "\"}\n" +
-                "      }\n" +
-                "    }\n" +
+                "    \"settings\": {\"vnext\": [{\"address\": \"" + host + "\", \"port\": " + port + ", \"users\": [{\"id\": \"" + uuid + "\", \"encryption\": \"none\"}]}]},\n" +
+                "    \"streamSettings\": {\"network\": \"ws\", \"security\": \"none\", \"wsSettings\": {\"path\": \"" + path + "\", \"headers\": {\"Host\": \"" + sni + "\"}}}\n" +
                 "  }]\n" +
                 "}";
-
-        File configFile = new File(dir, "config.json");
-        FileOutputStream fos = new FileOutputStream(configFile);
+        FileOutputStream fos = new FileOutputStream(new File(dir, "config.json"));
         fos.write(json.getBytes());
         fos.flush(); fos.close();
     }
 
     private void stopVpn() {
         try {
-            if (mXrayProcess != null) {
-                mXrayProcess.destroy();
-                mXrayProcess = null;
-            }
-            if (mThread != null) {
-                mThread.interrupt();
-                mThread = null;
-            }
-            if (mInterface != null) {
-                mInterface.close();
-                mInterface = null;
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "خطا در توقف: " + e.getMessage());
-        }
+            if (mXrayProcess != null) { mXrayProcess.destroy(); mXrayProcess = null; }
+            if (mThread != null) { mThread.interrupt(); mThread = null; }
+            if (mInterface != null) { mInterface.close(); mInterface = null; }
+        } catch (Exception e) { Log.e(TAG, "خطا در توقف: " + e.getMessage()); }
     }
 }
