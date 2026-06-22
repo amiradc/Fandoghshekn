@@ -8,8 +8,10 @@ import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.widget.Toast;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStreamReader;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -71,20 +73,31 @@ public class FandoghVpnService extends VpnService implements Runnable {
                     .addAddress("10.0.0.2", 24)
                     .addDisallowedApplication(getPackageName());
 
-            // جادوی اصلی: هدایت ترافیک سیستم به پورت HTTP هسته Xray
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                 builder.setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", 10809));
             }
 
             mInterface = builder.establish();
-
             if (mInterface == null) {
                 throw new Exception("سیستم‌عامل اجازه ایجاد تونل را نداد!");
             }
             showStatus("🚀 فندق‌شکن متصل شد.");
+            
             String[] cmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
             mXrayProcess = Runtime.getRuntime().exec(cmd);
             
+            // 🛑 جادوی جدید: خواندن آنلاین لاگ‌های هسته Xray و فرستادن به Logcat
+            new Thread(() -> {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(mXrayProcess.getErrorStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        Log.d("XrayCoreLog", line);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "خطا در خواندن لاگ‌های هسته", e);
+                }
+            }).start();
+
             while (mThread != null && !mThread.isInterrupted()) {
                 Thread.sleep(1000);
             }
@@ -123,7 +136,6 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String path = queryPairs.containsKey("path") ? java.net.URLDecoder.decode(queryPairs.get("path"), "UTF-8") : "/";
         String sni = queryPairs.containsKey("host") ? queryPairs.get("host") : host;
         
-        // تنظیم دو اینباند همزمان: یکی Socks روی پورت 10808 و دیگری HTTP روی پورت 10809
         String json = "{\n" +
                 "  \"log\": {\"loglevel\": \"warning\"},\n" +
                 "  \"inbounds\": [\n" +
