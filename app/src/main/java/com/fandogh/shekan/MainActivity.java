@@ -33,7 +33,7 @@ public class MainActivity extends Activity {
 
     private void startFetchingConfig() {
         btnConnect.setText("در حال دریافت کانفیگ...");
-        btnConnect.setBackgroundColor(0xFF2196F3); // آبی
+        btnConnect.setBackgroundColor(0xFF2196F3);
         btnConnect.setEnabled(false);
 
         configManager.fetchAndDecryptConfig(new ConfigManager.ConfigCallback() {
@@ -45,8 +45,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onError(String error) {
-                resetButton("خطا در شبکه!", 0xFFF44336);
-                Toast.makeText(MainActivity.this, error, Toast.LENGTH_LONG).show();
+                resetButton(error, 0xFFF44336);
             }
         });
     }
@@ -73,7 +72,6 @@ public class MainActivity extends Activity {
             
             String host = hostAndPort.substring(0, colonIndex).trim();
             String portStr = hostAndPort.substring(colonIndex + 1).trim();
-            
             int port = Integer.parseInt(portStr);
 
             pingManager.checkTcpPing(host, port, new PingManager.PingCallback() {
@@ -95,7 +93,6 @@ public class MainActivity extends Activity {
             });
 
         } catch (Exception e) {
-            // سیستم رادیولوژی: نمایش دلیل خطا به همراه ۲۵ کاراکتر اول متن دریافتی
             String preview = "";
             if (config != null) {
                 int end = Math.min(config.length(), 25);
@@ -111,10 +108,9 @@ public class MainActivity extends Activity {
         if (resultCode == RESULT_OK) {
             Intent intent = new Intent(this, FandoghVpnService.class);
             startService(intent);
-            
             btnConnect.setEnabled(true);
             btnConnect.setText("فندق‌شکن فعال است 🛡️");
-            btnConnect.setBackgroundColor(0xFF4CAF50); // سبز
+            btnConnect.setBackgroundColor(0xFF4CAF50);
             isConnected = true;
         } else {
             resetButton("عدم تایید مجوز VPN", 0xFFF44336);
@@ -125,7 +121,7 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(this, FandoghVpnService.class);
         intent.setAction("STOP");
         startService(intent);
-        resetButton("اتصال هوشمند", 0xFFFF9800); // نارنجی
+        resetButton("اتصال هوشمند", 0xFFFF9800);
     }
 
     private void resetButton(String text, int color) {
