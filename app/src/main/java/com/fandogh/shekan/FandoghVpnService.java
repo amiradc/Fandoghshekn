@@ -19,10 +19,17 @@ public class FandoghVpnService extends VpnService implements Runnable {
     private Thread mThread;
     private ParcelFileDescriptor mInterface;
     private Process mXrayProcess;
-    private Process mTun2SocksProcess;
+    private int mTun2SocksPid = -1; // ذخیره PID فرآیند نیتیو
     private String mVlessLink;
 
-    // نمایش مستقیم ارورها روی صفحه گوشی بدون نیاز به کامپیوتر
+    // بارگذاری کتابخانه نیتیو C
+    static {
+        System.loadLibrary("native-lib");
+    }
+
+    // تعریف تابع نیتیو
+    private native int execWithFd(String[] cmd, int tunFd);
+
     private void showStatus(String message) {
         new Handler(Looper.getMainLooper()).post(() ->
             Toast.makeText(getApplicationContext(), message, Toast.LENGTH_LONG).show()
@@ -59,7 +66,9 @@ public class FandoghVpnService extends VpnService implements Runnable {
             File xrayBin = new File(nativeDir, "libxray.so");
             File tun2socksBin = new File(nativeDir, "libtun2socks.so");
 
-            if (!xrayBin.exists()) throw new Exception("هسته Xray یافت نشد!");
+            if (!xrayBin.exists() || !tun2socksBin.exists()) {
+                throw new Exception("هسته‌های شبکه یافت نشدند!");
+            }
 
             File baseDir = getFilesDir();
             if (mVlessLink != null && mVlessLink.startsWith("vless://")) {
@@ -79,32 +88,24 @@ public class FandoghVpnService extends VpnService implements Runnable {
             if (mInterface == null) throw new Exception("تونل VPN ایجاد نشد!");
             int tunFd = mInterface.getFd();
 
-            // 🔓 هک سیستمی: شکستن قفل CLOEXEC اندروید برای مجاز کردن Tun2Socks به استفاده از تونل
-            try {
-                android.system.Os.fcntlInt(mInterface.getFileDescriptor(), android.system.OsConstants.F_SETFD, 0);
-            } catch (Exception e) {
-                Log.e(TAG, "خطا در باز کردن قفل تونل", e);
-            }
-
-            // 🚀 روشن کردن Xray
+            // 🚀 ۱. روشن کردن Xray (بدون نیاز به FD ارث‌بری)
             String[] xrayCmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
             mXrayProcess = Runtime.getRuntime().exec(xrayCmd);
-            pipeLogsToScreen(mXrayProcess, "Xray");
 
-            // 🛠️ روشن کردن Tun2Socks
-            if (tun2socksBin.exists()) {
-                String[] t2sCmd = {
-                    tun2socksBin.getAbsolutePath(),
-                    "-device", "fd://" + tunFd,
-                    "-proxy", "socks5://127.0.0.1:10808"
-                };
-                mTun2SocksProcess = Runtime.getRuntime().exec(t2sCmd);
-                pipeLogsToScreen(mTun2SocksProcess, "Tun2Socks");
+            // 🚀 ۲. روشن کردن Tun2Socks از طریق پل نیتیو C (تضمین ماندگاری FD)
+            String[] t2sCmd = {
+                tun2socksBin.getAbsolutePath(),
+                "-device", "fd://" + tunFd,
+                "-proxy", "socks5://127.0.0.1:10808"
+            };
+            
+            mTun2SocksPid = execWithFd(t2sCmd, tunFd);
+            
+            if (mTun2SocksPid > 0) {
+                showStatus("🚀 فندق‌شکن با موفقیت متصل شد!");
             } else {
-                showStatus("❌ فایل لایه مترجم شبکه (Tun2Socks) یافت نشد!");
+                throw new Exception("خطا در استارت لایه نیتیو تونل!");
             }
-
-            showStatus("🚀 فندق‌شکن فعال شد. در حال مانیتور جریان شبکه...");
 
             while (mThread != null && !mThread.isInterrupted()) {
                 Thread.sleep(1000);
@@ -112,30 +113,10 @@ public class FandoghVpnService extends VpnService implements Runnable {
         } catch (InterruptedException e) {
             showStatus("🛑 فندق‌شکن قطع شد.");
         } catch (Exception e) {
-            showStatus("❌ خطای سیستم: " + e.getMessage());
+            showStatus("❌ خطا: " + e.getMessage());
         } finally {
             stopVpn();
         }
-    }
-
-    // 📻 لوله‌کشی جریان ارورها مستقیماً به روی اسکرین گوشی
-    private void pipeLogsToScreen(Process process, String processName) {
-        if (process == null) return;
-        
-        // شنود خروجی‌های استاندارد اِررور
-        new Thread(() -> {
-            try (BufferedReader r = new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
-                String line;
-                int count = 0;
-                while ((line = r.readLine()) != null && count < 3) {
-                    // فرستادن اِررورهای حیاتی اولیه به صورت پاپ‌آپ روی گوشی
-                    if (line.toLowerCase().contains("fail") || line.toLowerCase().contains("err") || line.toLowerCase().contains("fatal")) {
-                        showStatus("⚠️ [" + processName + "]: " + line);
-                        count++; // برای اینکه صفحه پر از توست نشود، فقط ارورهای اولیه را نشان بده
-                    }
-                }
-            } catch (Exception ignored) {}
-        }).start();
     }
 
     private void generateXrayConfigManual(String link, File dir) throws Exception {
@@ -147,7 +128,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String queryString = querySplit.length > 1 ? querySplit[1] : "";
         
         int atIdx = credentialsAndServer.lastIndexOf("@");
-        if (atIdx == -1) throw new Exception("فرمت کانفیگ اشتباه است (@ ندارد)");
+        if (atIdx == -1) throw new Exception("فرمت کانفیگ اشتباه است");
         String uuid = credentialsAndServer.substring(0, atIdx);
         String serverPart = credentialsAndServer.substring(atIdx + 1);
         
@@ -230,7 +211,11 @@ public class FandoghVpnService extends VpnService implements Runnable {
 
     private void stopVpn() {
         try {
-            if (mTun2SocksProcess != null) { mTun2SocksProcess.destroy(); mTun2SocksProcess = null; }
+            // بستن فرآیند نیتیو با ارسال سیگنال لینوکسی از طریق PID
+            if (mTun2SocksPid > 0) {
+                android.os.Process.sendSignal(mTun2SocksPid, 9); // SIGKILL
+                mTun2SocksPid = -1;
+            }
             if (mXrayProcess != null) { mXrayProcess.destroy(); mXrayProcess = null; }
             if (mThread != null) { mThread.interrupt(); mThread = null; }
             if (mInterface != null) { mInterface.close(); mInterface = null; }
