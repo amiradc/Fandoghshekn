@@ -92,14 +92,14 @@ public class FandoghVpnService extends VpnService implements Runnable {
             if (xrayLog.exists()) xrayLog.delete();
             if (t2sLog.exists()) t2sLog.delete();
 
-            // 🚀 ۱. روشن کردن Xray و هدایت هوشمند لوگ‌ها به فایل
+            // 🚀 ۱. روشن کردن Xray با سطح گزارش تفصیلی info
             String[] xrayCmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
             ProcessBuilder xrayPb = new ProcessBuilder(xrayCmd);
             xrayPb.redirectOutput(xrayLog);
             xrayPb.redirectError(xrayLog);
             mXrayProcess = xrayPb.start();
 
-            // 🚀 ۲. روشن کردن Tun2Socks از طریق لایه نیتیو
+            // 🚀 ۲. روشن کردن Tun2Socks
             String[] t2sCmd = {
                 tun2socksBin.getAbsolutePath(),
                 "-device", "fd://" + tunFd,
@@ -107,10 +107,10 @@ public class FandoghVpnService extends VpnService implements Runnable {
             };
             mTun2SocksPid = execWithFd(t2sCmd, tunFd, t2sLog.getAbsolutePath());
 
-            showStatus("⏳ در حال تحلیل پایداری هسته‌ها...");
+            showStatus("⏳ در حال تحلیل رفتار هسته Xray...");
             
-            // ۲ ثانیه صبر می‌کنیم تا هسته‌ها بالا بیایند و اگر اروری دارند بنویسند
-            Thread.sleep(2000);
+            // ۳ ثانیه صبر می‌کنیم تا Xray تلاشش را بکند و اگر اروری داد کاملاً بنویسد
+            Thread.sleep(3000);
             checkCoarseLogs(baseDir);
 
             while (mThread != null && !mThread.isInterrupted()) {
@@ -125,7 +125,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
         }
     }
 
-    // خواندن فایل‌های جعبه سیاه و نمایش مستقیم روی صفحه گوشی
+    // خواندن عمیق گزارشات تا ۲۰ خط برای پیدا کردن ریشه مشکل
     private void checkCoarseLogs(File baseDir) {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
@@ -134,20 +134,20 @@ public class FandoghVpnService extends VpnService implements Runnable {
                 StringBuilder report = new StringBuilder();
 
                 if (xrayLog.exists()) {
-                    report.append("🔹 Xray:\n");
+                    report.append("🔹 Xray Log:\n");
                     BufferedReader br = new BufferedReader(new java.io.FileReader(xrayLog));
                     String line; int c = 0;
-                    while ((line = br.readLine()) != null && c < 2) {
+                    while ((line = br.readLine()) != null && c < 20) {
                         report.append(line).append("\n"); c++;
                     }
                     br.close();
                 }
 
                 if (t2sLog.exists()) {
-                    report.append("\n🔸 Tun2Socks:\n");
+                    report.append("\n🔸 Tun2Socks Log:\n");
                     BufferedReader br = new BufferedReader(new java.io.FileReader(t2sLog));
                     String line; int c = 0;
-                    while ((line = br.readLine()) != null && c < 2) {
+                    while ((line = br.readLine()) != null && c < 5) {
                         report.append(line).append("\n"); c++;
                     }
                     br.close();
@@ -155,8 +155,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
 
                 if (report.length() > 0) {
                     Toast.makeText(getApplicationContext(), report.toString(), Toast.LENGTH_LONG).show();
-                } else {
-                    Toast.makeText(getApplicationContext(), "🚀 هسته‌ها فعال و سکوت برقرار است!", Toast.LENGTH_SHORT).show();
+                    Log.d(TAG, report.toString());
                 }
             } catch (Exception e) {
                 Log.e(TAG, "خطا در بررسی جعبه سیاه", e);
@@ -238,7 +237,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
                 (!flow.isEmpty() ? ", \"flow\": \"" + flow + "\"" : "") + "}";
 
         String json = "{\n" +
-                "  \"log\": {\"loglevel\": \"warning\"},\n" +
+                "  \"log\": {\"loglevel\": \"info\"},\n" +
                 "  \"inbounds\": [\n" +
                 "    {\"port\": 10808, \"protocol\": \"socks\", \"settings\": {\"auth\": \"noauth\", \"udp\": true}}\n" +
                 "  ],\n" +
