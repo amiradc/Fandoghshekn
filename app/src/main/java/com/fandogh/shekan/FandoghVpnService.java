@@ -86,17 +86,31 @@ public class FandoghVpnService extends VpnService implements Runnable {
             String[] cmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
             mXrayProcess = Runtime.getRuntime().exec(cmd);
             
-            // 🛑 جادوی جدید: خواندن آنلاین لاگ‌های هسته Xray و فرستادن به Logcat
-            new Thread(() -> {
+            // ذخیره آنلاین ارورهای هسته برای نمایش به کاربر در صورت کرش
+            final StringBuilder xrayErrors = new StringBuilder();
+            Thread errorReader = new Thread(() -> {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(mXrayProcess.getErrorStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        Log.d("XrayCoreLog", line);
+                        xrayErrors.append(line).append("\n");
                     }
-                } catch (Exception e) {
-                    Log.e(TAG, "خطا در خواندن لاگ‌های هسته", e);
+                } catch (Exception ignored) {}
+            });
+            errorReader.start();
+
+            // ۱.۵ ثانیه صبر می‌کنیم تا ببینیم هسته پایدار می‌ماند یا فوراً کرش می‌کند
+            Thread.sleep(1500);
+            try {
+                int exitCode = mXrayProcess.exitValue();
+                // اگر به این خط برسیم یعنی هسته زنده نمانده و متوقف شده است
+                String coreError = xrayErrors.toString().trim();
+                if (coreError.isEmpty()) {
+                    coreError = "هسته بدون لاگ متوقف شد. کد خروج: " + exitCode;
                 }
-            }).start();
+                throw new Exception(coreError);
+            } catch (IllegalThreadStateException e) {
+                // این یعنی فرآیند هسته با موفقیت در حال اجراست و کرش نکرده است
+            }
 
             while (mThread != null && !mThread.isInterrupted()) {
                 Thread.sleep(1000);
@@ -105,7 +119,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
             showStatus("🛑 فندق‌شکن قطع شد.");
         } catch (Exception e) {
             Log.e(TAG, "خطای جدی در فرآیند اتصال هسته", e);
-            showStatus("❌ خطا: " + e.toString());
+            showStatus("❌ خطا: " + e.getMessage());
         } finally {
             stopVpn();
         }
@@ -137,7 +151,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String sni = queryPairs.containsKey("host") ? queryPairs.get("host") : host;
         
         String json = "{\n" +
-                "  \"log\": {\"loglevel\": \"warning\"},\n" +
+                "  \"log\": {\"loglevel\": \"info\"},\n" +
                 "  \"inbounds\": [\n" +
                 "    {\"port\": 10808, \"protocol\": \"socks\", \"settings\": {\"auth\": \"noauth\", \"udp\": true}},\n" +
                 "    {\"port\": 10809, \"protocol\": \"http\", \"settings\": {}}\n" +
