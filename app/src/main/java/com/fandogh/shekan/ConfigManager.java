@@ -68,7 +68,15 @@ public class ConfigManager {
 
             try {
                 String decryptedConfig = decryptAES(rawData, SECRET_KEY);
-                mainHandler.post(() -> callback.onSuccess(decryptedConfig));
+                
+                // یک بررسی حیاتی: اگر متن همین الان باز شده و یک لینک هویت‌دار است،
+                // مستقیم آن را پاس بده تا بخش‌های دیگر برنامه دوباره بیهوده آن را دیکد نکنند.
+                if (decryptedConfig.startsWith("vless://") || decryptedConfig.startsWith("vmess://") || decryptedConfig.startsWith("ss://")) {
+                    mainHandler.post(() -> callback.onSuccess(decryptedConfig));
+                } else {
+                    mainHandler.post(() -> callback.onError("خطا: ساختار کانفیگ نهایی معتبر نیست."));
+                }
+                
             } catch (javax.crypto.BadPaddingException | javax.crypto.IllegalBlockSizeException ae) {
                 mainHandler.post(() -> callback.onError("خطا در رمزگشایی: دیتای جیست با کلید همخوانی ندارد"));
             } catch (Exception e) {
