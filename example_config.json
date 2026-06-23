@@ -1,19 +1,10 @@
 {
   "configs": [
     {
-      "id": 1,
-      "name": "Server-1 Iran",
-      "data": "YOUR_ENCRYPTED_VLESS_CONFIG_HERE"
-    },
-    {
-      "id": 2,
-      "name": "Server-2 Germany",
-      "data": "YOUR_ENCRYPTED_VLESS_CONFIG_HERE"
-    },
-    {
-      "id": 3,
-      "name": "Server-3 Singapore",
-      "data": "YOUR_ENCRYPTED_VLESS_CONFIG_HERE"
+      "name": "Config Example 1",
+      "url": "vless://YOUR_UUID@SERVER_IP:PORT?type=ws&encryption=none&path=/PATH&host=DOMAIN&security=tls",
+      "note": "توجه: این فقط یک مثال است. کانفیگ خود را جایگزین کنید."
     }
-  ]
+  ],
+  "warning": "⚠️ NEVER commit real configs with sensitive data to version control!"
 }

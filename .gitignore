@@ -38,6 +38,15 @@ Thumbs.db
 *.log
 logs/
 
-# Security
+# Security - NEVER COMMIT THESE!
 config.properties
 secret_keys.txt
+*.class
+Encryptor.class
+
+# Test data
+test_output.txt
+
+# Backup files
+*.bak
+*.backup
