@@ -86,20 +86,17 @@ public class FandoghVpnService extends VpnService implements Runnable {
             if (mInterface == null) throw new Exception("تونل VPN ایجاد نشد!");
             int tunFd = mInterface.getFd();
 
-            // آماده‌سازی فایل‌های گزارش
             File xrayLog = new File(baseDir, "xray.log");
             File t2sLog = new File(baseDir, "tun2socks.log");
             if (xrayLog.exists()) xrayLog.delete();
             if (t2sLog.exists()) t2sLog.delete();
 
-            // 🚀 ۱. روشن کردن Xray با سطح گزارش تفصیلی info
             String[] xrayCmd = {xrayBin.getAbsolutePath(), "run", "-config", new File(baseDir, "config.json").getAbsolutePath()};
             ProcessBuilder xrayPb = new ProcessBuilder(xrayCmd);
             xrayPb.redirectOutput(xrayLog);
             xrayPb.redirectError(xrayLog);
             mXrayProcess = xrayPb.start();
 
-            // 🚀 ۲. روشن کردن Tun2Socks
             String[] t2sCmd = {
                 tun2socksBin.getAbsolutePath(),
                 "-device", "fd://" + tunFd,
@@ -107,11 +104,7 @@ public class FandoghVpnService extends VpnService implements Runnable {
             };
             mTun2SocksPid = execWithFd(t2sCmd, tunFd, t2sLog.getAbsolutePath());
 
-            showStatus("⏳ در حال تحلیل رفتار هسته Xray...");
-            
-            // ۳ ثانیه صبر می‌کنیم تا Xray تلاشش را بکند و اگر اروری داد کاملاً بنویسد
-            Thread.sleep(3000);
-            checkCoarseLogs(baseDir);
+            showStatus("⏳ اتصال هوشمند فندق‌شکن برقرار شد.");
 
             while (mThread != null && !mThread.isInterrupted()) {
                 Thread.sleep(1000);
@@ -125,44 +118,6 @@ public class FandoghVpnService extends VpnService implements Runnable {
         }
     }
 
-    // خواندن عمیق گزارشات تا ۲۰ خط برای پیدا کردن ریشه مشکل
-    private void checkCoarseLogs(File baseDir) {
-        new Handler(Looper.getMainLooper()).post(() -> {
-            try {
-                File xrayLog = new File(baseDir, "xray.log");
-                File t2sLog = new File(baseDir, "tun2socks.log");
-                StringBuilder report = new StringBuilder();
-
-                if (xrayLog.exists()) {
-                    report.append("🔹 Xray Log:\n");
-                    BufferedReader br = new BufferedReader(new java.io.FileReader(xrayLog));
-                    String line; int c = 0;
-                    while ((line = br.readLine()) != null && c < 20) {
-                        report.append(line).append("\n"); c++;
-                    }
-                    br.close();
-                }
-
-                if (t2sLog.exists()) {
-                    report.append("\n🔸 Tun2Socks Log:\n");
-                    BufferedReader br = new BufferedReader(new java.io.FileReader(t2sLog));
-                    String line; int c = 0;
-                    while ((line = br.readLine()) != null && c < 5) {
-                        report.append(line).append("\n"); c++;
-                    }
-                    br.close();
-                }
-
-                if (report.length() > 0) {
-                    Toast.makeText(getApplicationContext(), report.toString(), Toast.LENGTH_LONG).show();
-                    Log.d(TAG, report.toString());
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "خطا در بررسی جعبه سیاه", e);
-            }
-        });
-    }
-
     private void generateXrayConfigManual(String link, File dir) throws Exception {
         String current = link.substring(8);
         String[] hashSplit = current.split("#", 2);
@@ -170,17 +125,17 @@ public class FandoghVpnService extends VpnService implements Runnable {
         String[] querySplit = mainPart.split("\\?", 2);
         String credentialsAndServer = querySplit[0];
         String queryString = querySplit.length > 1 ? querySplit[1] : "";
-        
+
         int atIdx = credentialsAndServer.lastIndexOf("@");
         if (atIdx == -1) throw new Exception("فرمت کانفیگ اشتباه است");
         String uuid = credentialsAndServer.substring(0, atIdx);
         String serverPart = credentialsAndServer.substring(atIdx + 1);
-        
+
         int colonIdx = serverPart.lastIndexOf(":");
         if (colonIdx == -1) throw new Exception("پورت سرور یافت نشد");
         String host = serverPart.substring(0, colonIdx).trim();
         int port = Integer.parseInt(serverPart.substring(colonIdx + 1).trim());
-        
+
         Map<String, String> params = new HashMap<>();
         if (!queryString.isEmpty()) {
             for (String pair : queryString.split("&")) {
@@ -190,54 +145,29 @@ public class FandoghVpnService extends VpnService implements Runnable {
                 }
             }
         }
-        
+
         String security = params.getOrDefault("security", "none");
         String network = params.getOrDefault("type", "tcp");
         String sni = params.getOrDefault("sni", params.getOrDefault("host", host));
         String path = params.getOrDefault("path", "/");
-        String pbk = params.getOrDefault("pbk", "");
-        String sid = params.getOrDefault("sid", "");
-        String fp = params.getOrDefault("fp", "chrome");
-        String flow = params.getOrDefault("flow", ""); 
 
         StringBuilder streamStr = new StringBuilder();
         streamStr.append("{\n")
                  .append("  \"network\": \"").append(network).append("\",\n")
                  .append("  \"security\": \"").append(security).append("\"");
 
-        if ("reality".equals(security)) {
-            streamStr.append(",\n  \"realitySettings\": {\n")
-                     .append("    \"show\": false,\n")
-                     .append("    \"fingerprint\": \"").append(fp).append("\",\n")
-                     .append("    \"serverName\": \"").append(sni).append("\",\n")
-                     .append("    \"publicKey\": \"").append(pbk).append("\",\n")
-                     .append("    \"shortId\": \"").append(sid).append("\"\n")
-                     .append("  }");
-        } else if ("tls".equals(security)) {
-            streamStr.append(",\n  \"tlsSettings\": {\n")
-                     .append("    \"serverName\": \"").append(sni).append("\",\n")
-                     .append("    \"fingerprint\": \"").append(fp).append("\"\n")
-                     .append("  }");
-        }
-
         if ("ws".equals(network)) {
             streamStr.append(",\n  \"wsSettings\": {\n")
                      .append("    \"path\": \"").append(path).append("\",\n")
                      .append("    \"headers\": {\"Host\": \"").append(sni).append("\"}\n")
                      .append("  }");
-        } else if ("grpc".equals(network)) {
-            String serviceName = params.getOrDefault("serviceName", "");
-            streamStr.append(",\n  \"grpcSettings\": {\n")
-                     .append("    \"serviceName\": \"").append(serviceName).append("\"\n")
-                     .append("  }");
         }
         streamStr.append("\n}");
 
-        String userSettings = "{\"id\": \"" + uuid + "\", \"encryption\": \"none\"" + 
-                (!flow.isEmpty() ? ", \"flow\": \"" + flow + "\"" : "") + "}";
+        String userSettings = "{\"id\": \"" + uuid + "\", \"encryption\": \"none\"}";
 
         String json = "{\n" +
-                "  \"log\": {\"loglevel\": \"info\"},\n" +
+                "  \"log\": {\"loglevel\": \"warning\"},\n" +
                 "  \"inbounds\": [\n" +
                 "    {\"port\": 10808, \"protocol\": \"socks\", \"settings\": {\"auth\": \"noauth\", \"udp\": true}}\n" +
                 "  ],\n" +
